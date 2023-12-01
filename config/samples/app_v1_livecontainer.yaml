@@ -1,0 +1,22 @@
+apiVersion: app.kubebuilder.io/v1
+kind: LiveContainer
+metadata:
+  name: livecontainer-sample
+  namespace: liuweibin
+spec:
+  # TODO(user): Add fields here
+  schedulerName: volcano
+  image: harbor-qzm.stonewise.cn/proxy_cache/kubeflow/notebook-image:cuda100-basic
+  imagePullPolicy: Always
+  timeout: 60
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "1"
+    limits:
+      memory: "50Gi"
+      cpu: "20"
+  ports:
+  - containerPort: 22
+    name: ssh-port
+    hostPort: 1913

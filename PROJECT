@@ -1,0 +1,16 @@
+domain: kubebuilder.io
+layout:
+- go.kubebuilder.io/v3
+projectName: lifecycle-container
+repo: lifecycle-container
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: kubebuilder.io
+  group: app
+  kind: LiveContainer
+  path: lifecycle-container/api/v1
+  version: v1
+version: "3"
