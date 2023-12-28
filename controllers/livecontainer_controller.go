@@ -29,6 +29,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"time"
 )
 
 // LiveContainerReconciler reconciles a LiveContainer object
@@ -89,7 +90,7 @@ func (r *LiveContainerReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if err := ctrl.SetControllerReference(instance, pod, r.Scheme); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := Mypod(ctx, r, pod, logger); err != nil {
+	if err := Mypod(ctx, r, pod, instance, logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -110,9 +111,12 @@ func (r *LiveContainerReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		logger.Info("Updating Status", "namespace", instance.Namespace, "name", instance.Name)
 		if foundPod.Status.Reason == "DeadlineExceeded" {
 			instance.Status.Phase = foundPod.Status.Reason
-			logger.Info("Pod Timeout.")
+			logger.Info("Pod Timeout", "namespace", instance.Namespace, "name", instance.Name)
+
 		} else {
 			instance.Status.Phase = string(foundPod.Status.Phase)
+			// update instance's node name before DeadlineExceeded
+			instance.Status.AssignedNode = string(foundPod.Spec.NodeName)
 		}
 
 	}
@@ -123,17 +127,26 @@ func (r *LiveContainerReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{}, nil
 }
 
-func Mypod(ctx context.Context, r *LiveContainerReconciler, pod *corev1.Pod, log logr.Logger) error {
+func Mypod(ctx context.Context, r *LiveContainerReconciler, pod *corev1.Pod, instance *appv1.LiveContainer, log logr.Logger) error {
 	foundPod := &corev1.Pod{}
 	justCreated := false
 	if err := r.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, foundPod); err != nil {
 		if apierrs.IsNotFound(err) {
-			log.Info("Creating Pod", "namespace", pod.Namespace, "name", pod.Name)
-			if err := r.Create(ctx, pod); err != nil {
-				log.Error(err, "unable to create pod")
-				return err
+			// Check if instance creation timestamp is older than the threshold
+			createdTime := instance.CreationTimestamp.Unix()
+			currentTime := time.Now().Unix()
+			durationTime := currentTime - createdTime
+			if durationTime >= instance.Spec.Timeout {
+				return nil
+			} else {
+				log.Info("Creating Pod", "namespace", pod.Namespace, "name", pod.Name)
+				if err := r.Create(ctx, pod); err != nil {
+					log.Error(err, "unable to create pod")
+					return err
+				}
+				justCreated = true
 			}
-			justCreated = true
+
 		} else {
 			log.Error(err, "error getting pod")
 			return err
@@ -198,3 +211,4 @@ func (r *LiveContainerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Pod{}).
 		Complete(r)
 }
+
